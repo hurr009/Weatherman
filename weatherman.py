@@ -1,65 +1,40 @@
-import os
-import sys
+from statistics import mean
 import argparse
 import datetime
 import glob
 import csv
 
+
 class DayReport:
-  def __str__(self):
-    print(self.date)
 
-  def __init__(self, date, maxtemp, meantemp, mintemp, dew, meandew, mindew, maxhumidity, meanhumidity, minhumidity, maxsealevel, meansealevel, minsealevel, maxvisibility, meanvisibility, minvisibility, maxwind, meanwind, maxgust, precipitaion, cloudcover, events, winddirdegrees):
-    self.date = date
-    self.maxtemp = maxtemp
-    self.meantemp = meantemp
-    self.mintemp = mintemp
-    self.dew = dew
-    self.meandew = meandew
-    self.mindew = mindew
-    self.maxhumidity = maxhumidity
-    self.meanhumidity = meanhumidity
-    self.minhumidity = minhumidity
-    self.maxsealevel = maxsealevel
-    self.meansealevel = meansealevel
-    self.minsealevel = minsealevel
-    self.maxvisibility = maxvisibility
-    self.meanvisibility = meanvisibility
-    self.minvisibility = minvisibility
-    self.maxwind = maxwind
-    self.meanwind = meanwind
-    self.maxgust = maxgust
-    self.precipitaion = precipitaion
-    self.cloudcover = cloudcover
-    self.events = events
-    self.winddirdegrees = winddirdegrees
-    
-  
+  def __init__(self, row):
+    self.date = datetime.datetime.strptime(row.get("PKT") or row.get("PKST"), "%Y-%m-%d")
+    self.maxtemp =  row["Max TemperatureC"]
+    self.mintemp = row["Min TemperatureC"]
+    self.maxhumidity = row["Max Humidity"]
+    self.meanhumidity = row[" Mean Humidity"]
 
-def populate_readings():
-  dayslist = []
-  dayscount = 0
-  path = sys.argv[1]
-  path += r"\*.txt"
-  files = glob.glob(path)
-  for csv_file in files:
-    with open(csv_file) as file:
-      reader = csv.DictReader(file, delimiter = ",")
-      line_count = 0
-      for row in reader:
-        if("PKT" in row):
-          l = row["PKT"].split('-')
-          d = datetime.date(int(l[0]), int(l[1]), int(l[2]))
-          dayslist.append(DayReport(d, row["Max TemperatureC"], row["Mean TemperatureC"], row["Min TemperatureC"], row["Dew PointC"], row["MeanDew PointC"], row["Min DewpointC"], row["Max Humidity"], row[" Mean Humidity"], row[" Min Humidity"], row[" Max Sea Level PressurehPa"], row[" Mean Sea Level PressurehPa"], row[" Min Sea Level PressurehPa"], row[" Max VisibilityKm"], row[" Mean VisibilityKm"], row[" Min VisibilitykM"], row[" Max Wind SpeedKm/h"], row[" Mean Wind SpeedKm/h"], row[" Max Gust SpeedKm/h"], row["Precipitationmm"], row[" CloudCover"], row[" Events"], row["WindDirDegrees"]))
-        else:
-          l1 = row["PKST"].split('-')
-          d1 = datetime.date(int(l1[0]), int(l1[1]), int(l1[2]))
-          dayslist.append(DayReport(d1, row["Max TemperatureC"], row["Mean TemperatureC"], row["Min TemperatureC"], row["Dew PointC"], row["MeanDew PointC"], row["Min DewpointC"], row["Max Humidity"], row[" Mean Humidity"], row[" Min Humidity"], row[" Max Sea Level PressurehPa"], row[" Mean Sea Level PressurehPa"], row[" Min Sea Level PressurehPa"], row[" Max VisibilityKm"], row[" Mean VisibilityKm"], row[" Min VisibilitykM"], row[" Max Wind SpeedKm/h"], row[" Mean Wind SpeedKm/h"], row[" Max Gust SpeedKm/h"], row["Precipitationmm"], row[" CloudCover"], row[" Events"], row["WindDirDegrees"]))
-        dayscount += 1
-        line_count += 1
-  return dayslist
 
-def finding_values1(list):
+def valid_date(s: str):
+    try:
+        return datetime.datetime.strptime(s, "%Y/%m")
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not a valid date: {s!r}")
+
+
+def get_readings(parser):
+  weather_record = []
+  path = parser.path # Getting argument from agparse
+  for weather_file in glob.glob(rf'{path}\*.txt'):
+    with open(weather_file) as filename:
+      weather_readings = csv.DictReader(filename, delimiter = ",")
+      for row in weather_readings:
+        weather_record.append(DayReport(row))
+
+  return weather_record
+
+
+def find_extremes(list):
   maxtemp = -9999999
   mintemp = 9999999
   maxmeanhumidity = -9999999
@@ -81,37 +56,25 @@ def finding_values1(list):
   result = [list[maxtempday], list[mintempday], list[maxhumidday]]
   return result
 
-def finding_values2(list):
-  avgmaxtemp = 0
-  avgmintemp = 0
-  avgmaxmeanhumidity = 0
-  daycount = 0
-  for day in list:
-    if(day.maxtemp != ""):
-      avgmaxtemp += int(day.maxtemp)
-    if(day.mintemp != ""):
-      avgmintemp += int(day.mintemp)
-    if(day.meanhumidity != ""):
-      avgmaxmeanhumidity += int(day.meanhumidity)
-    daycount += 1
-  avgmaxtemp /= daycount
-  avgmintemp /= daycount
-  avgmaxmeanhumidity /= daycount
-  result = [[avgmaxtemp], [avgmintemp], [avgmaxmeanhumidity]]
-  return result
+
+def find_average(list):
+  return mean([int(l.maxtemp) for l in list if l.maxtemp!=""]),\
+        mean([int(l.mintemp) for l in list if l.mintemp!=""]),\
+        mean([int(l.meanhumidity) for l in list if l.meanhumidity!=""])
 
 
-def display1(result):
+def display_extremes(result):
   print("The max temprature is:", result[0].maxtemp, "on", result[0].date)
   print("The min temprature is:", result[1].mintemp, "on", result[1].date)
   print("The most humid day is:", result[2].meanhumidity, "on", result[2].date)
 
-def display2(result):
-  print("The avg max temprature is:", result[0])
-  print("The avg min temprature is:", result[1])
-  print("The avg humidity is:", result[2])  
 
-def display3(result):
+def display_average(avg_max, avg_min, avg_mean_humidity):
+  print("The avg max temprature is:", avg_max)
+  print("The avg min temprature is:", avg_min)
+  print("The avg humidity is:", avg_mean_humidity) 
+
+def make_chart(result):
   daycount = 1
   for day in result:
     print(daycount, ":")
@@ -132,46 +95,47 @@ def display3(result):
     daycount += 1
     
 
-def parse(days_list):
+def parse():
   parser = argparse.ArgumentParser()
-  parser.add_argument("path", type = str, help = "path to weather files")
-  parser.add_argument("-e", "--year", type = int, help = "Insert year to see its weather extremes", nargs = "+")
-  parser.add_argument("-a", "--date1", type = str, help = "Insert year with its month to see its weather extremes", nargs = "+")
-  parser.add_argument("-c", "--date2", type = str, help = "Insert year with its month to see its bar chart", nargs = "+")
+  parser.add_argument("path", help="path to weather files")
+  parser.add_argument("-e", "--year", help="Insert year to see its weather extremes", nargs = "+")
+  parser.add_argument("-a", "--date1", type=valid_date, help="Insert year with its month to see its weather extremes", nargs = "+")
+  parser.add_argument("-c", "--date2", type=valid_date, help="Insert year with its month to see its bar chart", nargs = "+")
   args = parser.parse_args()
-  temp = []
-  i = 2
-  loop_count = len(sys.argv) - 2
-  loop_count /= 2
-  while(loop_count != 0):
-    if (sys.argv[i] == '-e'):
-      y = int(sys.argv[i+1])
-      for day in days_list:
-        if(day.date.year == y):
-          temp.append(day)
-      result = finding_values1(temp)
-      display1(result)
-    if (sys.argv[i] == '-a'):
-      a = sys.argv[i+1].split("/")
-      tyear = int(a[0])
-      tmonth = int(a[1])
-      for day in days_list:
-        if(day.date.year == tyear and day.date.month == tmonth):
-          temp.append(day)
-      result = finding_values2(temp)
-      display2(result)
-    if (sys.argv[i] == '-c'):
-      a = sys.argv[i+1].split("/")
-      tyear1 = int(a[0])
-      tmonth1 = int(a[1])
-      for day in days_list:
-        if(day.date.year == tyear1 and day.date.month == tmonth1):
-          temp.append(day)
-      display3(temp)
-    loop_count -= 1
-    i += 2
-    temp = []
-    result = []
+  return args
 
-days_list = populate_readings()
-parse(days_list)
+
+def calculate_data(parser, days_list):  
+  temp = []
+  if parser.year is not None:
+    for arg in parser.year:
+      target_year = int(arg)
+      for day in days_list:  
+        if(day.date.year == target_year):
+          temp.append(day)
+      result = find_extremes(temp)
+      display_extremes(result)
+      temp = []
+      result = []
+
+  if parser.date1 is not None:
+    for arg in parser.date1:
+      for day in days_list:
+        if(day.date.year == arg.year and day.date.month == arg.month):
+          temp.append(day)
+      avg_max, avg_min, avg_mean_humidity = find_average(temp)
+      display_average(avg_max, avg_min, avg_mean_humidity)
+      temp = []
+      result = []
+
+  if parser.date2 is not None:
+    for arg in parser.date2:
+      for day in days_list:
+        if(day.date.year == arg.year and day.date.month == arg.month):
+          temp.append(day)
+      make_chart(temp)
+      temp = []
+
+parser = parse()
+weather_record = get_readings(parser)
+calculate_data(parser, weather_record)
