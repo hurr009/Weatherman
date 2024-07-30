@@ -4,15 +4,14 @@ import datetime
 import glob
 import csv
 
-
-class DayReport:
-
-  def __init__(self, row):
-    self.date = datetime.datetime.strptime(row.get("PKT") or row.get("PKST"), "%Y-%m-%d")
-    self.maxtemp =  row["Max TemperatureC"]
-    self.mintemp = row["Min TemperatureC"]
-    self.maxhumidity = row["Max Humidity"]
-    self.meanhumidity = row[" Mean Humidity"]
+class WeatherRecord:
+    def __init__(self, row):
+        raw_date = row.get("PKT") or row.get("PKST")
+        self.date = datetime.datetime.strptime(raw_date, "%Y-%m-%d")
+        self.maxtemp =  row["Max TemperatureC"] and int(row["Max TemperatureC"])
+        self.mintemp = row["Min TemperatureC"] and int(row["Min TemperatureC"])
+        self.maxhumidity = row["Max Humidity"] and int(row["Max Humidity"])
+        self.meanhumidity = row[" Mean Humidity"] and int(row[" Mean Humidity"])
 
 
 def valid_date(s: str):
@@ -22,120 +21,85 @@ def valid_date(s: str):
         raise argparse.ArgumentTypeError(f"not a valid date: {s!r}")
 
 
-def get_readings(parser):
-  weather_record = []
-  path = parser.path # Getting argument from agparse
-  for weather_file in glob.glob(rf'{path}\*.txt'):
-    with open(weather_file) as filename:
-      weather_readings = csv.DictReader(filename, delimiter = ",")
-      for row in weather_readings:
-        weather_record.append(DayReport(row))
+def get_readings(cmd_args):
+    def is_valid_record(record):
+       return all([record.get('Max TemperatureC'), record.get('Min TemperatureC'), record.get('Max Humidity')])
+  
+    weather_record = []
 
-  return weather_record
+    for weather_file in glob.glob(rf'{cmd_args.path}\*.txt'):
+        with open(weather_file) as filename:
+            weather_readings = csv.DictReader(filename, delimiter=",")
 
+            for row in weather_readings:
+                if is_valid_record(row):
+                    weather_record.append(WeatherRecord(row))
 
-def find_extremes(list):
-  maxtemp = -9999999
-  mintemp = 9999999
-  maxmeanhumidity = -9999999
-  daycount = 0
-  for day in list:
-    if(day.maxtemp != ""):
-      if(int(day.maxtemp) > maxtemp):
-        maxtemp = int(day.maxtemp)
-        maxtempday = daycount
-    if(day.mintemp != ""):
-      if(int(day.mintemp) < mintemp):
-        mintemp = int(day.mintemp)
-        mintempday = daycount
-    if(day.meanhumidity != ""):
-      if(int(day.meanhumidity) > maxmeanhumidity):
-        maxmeanhumidity = int(day.meanhumidity)
-        maxhumidday = daycount
-    daycount += 1
-  result = [list[maxtempday], list[mintempday], list[maxhumidday]]
-  return result
+    return weather_record
 
 
-def find_average(list):
-  return mean([int(l.maxtemp) for l in list if l.maxtemp!=""]),\
-        mean([int(l.mintemp) for l in list if l.mintemp!=""]),\
-        mean([int(l.meanhumidity) for l in list if l.meanhumidity!=""])
+def find_extremes(records):
+   return max(records, key=lambda x: x.maxtemp), min(records, key=lambda x: x.mintemp), max(records, key=lambda x: x.maxhumidity)
 
 
-def display_extremes(result):
-  print("The max temprature is:", result[0].maxtemp, "on", result[0].date)
-  print("The min temprature is:", result[1].mintemp, "on", result[1].date)
-  print("The most humid day is:", result[2].meanhumidity, "on", result[2].date)
+def find_average(w_records):
+    def get_avg(key):
+        return mean([getattr(r, key) for r in w_records if getattr(r, key)])
+
+    return get_avg("maxtemp"), get_avg("mintemp"), get_avg("meanhumidity")
+
+
+def display_extremes(maxtemp_day, mintemp_day, maxhumid_day):
+    print("The max temprature is:", maxtemp_day.maxtemp, "on", maxtemp_day.date)
+    print("The min temprature is:", mintemp_day.mintemp, "on", mintemp_day.date)
+    print("The most humid day is:", maxhumid_day.maxhumidity, "on", maxhumid_day.date)
 
 
 def display_average(avg_max, avg_min, avg_mean_humidity):
-  print("The avg max temprature is:", avg_max)
-  print("The avg min temprature is:", avg_min)
-  print("The avg humidity is:", avg_mean_humidity) 
+    print("The avg max temprature is:", avg_max)
+    print("The avg min temprature is:", avg_min)
+    print("The avg humidity is:", avg_mean_humidity) 
+
 
 def make_chart(result):
-  daycount = 1
-  for day in result:
-    print(daycount, ":")
-    count1 = 0
-    count2 = 0
-    if(day.maxtemp != ""):
-      count1 = int(day.maxtemp)
-    if(day.mintemp != ""):
-      count2 = int(day.mintemp)
-    if(count1 != 0):
-      for i in range(count1):
-        print("+", end = " ")
-      print(count1, "C")
-    if(count2 != 0):
-      for i in range(count2):
-        print("+", end = " ")
-      print(count2, "C\n\n")
-    daycount += 1
+    for index, day in enumerate(result, 1):
+        print(f"{index} :\n{"+" * day.maxtemp}C\n{"-" * day.mintemp}C")
+        
+
+def get_cmdline_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("path", help="path to weather files")
+    parser.add_argument("-e", "--year", help="Insert year to see its weather extremes", nargs="+")
+    parser.add_argument("-a", "--date1", type=valid_date, help="Insert year with its month to see its weather extremes", nargs="+")
+    parser.add_argument("-c", "--date2", type=valid_date, help="Insert year with its month to see its bar chart", nargs="+")
+    return parser.parse_args()
     
 
-def parse():
-  parser = argparse.ArgumentParser()
-  parser.add_argument("path", help="path to weather files")
-  parser.add_argument("-e", "--year", help="Insert year to see its weather extremes", nargs = "+")
-  parser.add_argument("-a", "--date1", type=valid_date, help="Insert year with its month to see its weather extremes", nargs = "+")
-  parser.add_argument("-c", "--date2", type=valid_date, help="Insert year with its month to see its bar chart", nargs = "+")
-  args = parser.parse_args()
-  return args
+def calculate_data(cmd_args, weather_records):
+    def get_records_by_date(target_year, target_month=None):
+        target_months = [target_month] if target_month else list(range(1, 13))
+        return [l for l in weather_records if l.date.year==target_year and l.date.month in target_months]
+
+    for raw_year in cmd_args.year or []:
+        target_records = get_records_by_date(int(raw_year))
+        maxtemp_day, mintemp_day, maxhumid_day = find_extremes(target_records)
+        display_extremes(maxtemp_day, mintemp_day, maxhumid_day)
+
+    for arg in cmd_args.date1 or []:
+        target_records = get_records_by_date(arg.year, arg.month)
+        avg_max, avg_min, avg_mean_humidity = find_average(target_records)
+        display_average(avg_max, avg_min, avg_mean_humidity)
+
+    for arg in cmd_args.date2 or []:
+        target_records = get_records_by_date(arg.year, arg.month)
+        make_chart(target_records)
 
 
-def calculate_data(parser, days_list):  
-  temp = []
-  if parser.year is not None:
-    for arg in parser.year:
-      target_year = int(arg)
-      for day in days_list:  
-        if(day.date.year == target_year):
-          temp.append(day)
-      result = find_extremes(temp)
-      display_extremes(result)
-      temp = []
-      result = []
+def main():
+    cmd_args = get_cmdline_arguments()
+    weather_records = get_readings(cmd_args)
+    calculate_data(cmd_args, weather_records)
 
-  if parser.date1 is not None:
-    for arg in parser.date1:
-      for day in days_list:
-        if(day.date.year == arg.year and day.date.month == arg.month):
-          temp.append(day)
-      avg_max, avg_min, avg_mean_humidity = find_average(temp)
-      display_average(avg_max, avg_min, avg_mean_humidity)
-      temp = []
-      result = []
 
-  if parser.date2 is not None:
-    for arg in parser.date2:
-      for day in days_list:
-        if(day.date.year == arg.year and day.date.month == arg.month):
-          temp.append(day)
-      make_chart(temp)
-      temp = []
-
-parser = parse()
-weather_record = get_readings(parser)
-calculate_data(parser, weather_record)
+if __name__ == "__main__":
+    main()
